@@ -6,6 +6,9 @@
             this.geocoder = new google.maps.Geocoder();
             this.markers = List.create();
             this.prev_info = false;
+            if (options.cluster) {
+                this.markerClusterer = new MarkerClusterer(this.gMap, [], options.clusterer);
+            }
             this.directions = List.create();
         }
 
@@ -40,7 +43,9 @@
                     lng: options.lng
                 };
                 marker = this._createMarker(options);
-                
+                if (options.cluster) {
+                    this.markerClusterer.addMarker(marker);
+                }
                 this.markers.add(marker);
                 if (options.content) {
                     this._on({

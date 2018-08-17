@@ -131,6 +131,13 @@
     directionsDisplay.setOptions({
                             map: map.gMap,
                             panel: document.getElementById('steps-panel'),
+                            // routeIndex: i,
+                            // polylineOptions: {
+                            //     // strokeColor: "blue",
+                            //     // clickable: true,
+                            //     // strokeWeight: 5,
+                            //     visible: true
+                            // }
 
                         })
     var search = document.getElementById('search');
@@ -151,11 +158,306 @@
             provideRouteAlternatives: true
         }, function (response, status) {
             if (status === google.maps.DirectionsStatus.OK) {
+                for (var i = 0; i < response.routes.length; i++) {
+                    var rating = Math.floor(50 * Math.random() + 40) / 10;
+                    var keyword;
+                    if (8 <= rating) {
+                        keyword = 'Safe';
+                    }
+                    if (6 <= rating && rating < 8) {
+                        keyword = 'Somewhat Unsafe';
+                    }
+                    if (rating < 6) {
+                        keyword = 'Unsafe';
+                    }
+                    response.routes[i].summary += '  (' + rating + ': ' + keyword + ')';
+                    // console.log(response.routes[i]);
+                }
+                // console.log(response);
                 directionsDisplay.setDirections(response);
             } else {
                 window.alert('Directions request failed due to ' + status);
             }
         });
     }
-    
+
+    // function rd(number, digit) {
+    //     return Number((number).toFixed(digit));
+    // }
+
+    function pin_icon(str) {
+        // if (str.indexOf('VEHICLE') > -1) {
+        //     return 'icons/carrental.png'
+        // }
+        str = str.toUpperCase();
+        if (str.indexOf('CURRENCY') > -1) {
+            return 'icons/bank.png'
+        }
+        if (str.indexOf('FRAUDULENT CHECK') > -1) {
+            return 'icons/bank.png'
+        }
+        if (str.indexOf('FIRE') > -1) {
+            return 'icons/fire.png'
+        }
+        if (str.indexOf('THEFT') > -1) {
+            return 'icons/bank.png'
+        }
+        if (str.indexOf('FIREARM') > -1) {
+            return 'icons/shooting.png'
+        }
+        if (str.indexOf('ALCOHOL') > -1) {
+            return 'icons/bar.png'
+        }
+        if (str.indexOf('SEX') > -1) {
+            return 'icons/rape.png'
+        }
+        if (str.indexOf('RAPE') > -1) {
+            return 'icons/rape.png'
+        }
+        if (str.indexOf('BURGLARY') > -1) {
+            return 'icons/robbery.png'
+        }
+        if (str.indexOf('BATTERY') > -1) {
+            return 'icons/revolt.png'
+        }
+        if (str.indexOf('WEAPON') > -1) {
+            return 'icons/shooting.png'
+        }
+        if (str.indexOf('ROBBERY') > -1) {
+            return 'icons/robbery.png'
+        }
+        if (str.indexOf('MONEY') > -1) {
+            return 'icons/bank.png'
+        }
+        if (str.indexOf('SHOOTING') > -1) {
+            return 'icons/shooting.png'
+        }
+        else {
+            return 'icons/caution.png'
+        }
+    }
+
+    for (var i = 4531; i < 4560; i++) {
+        var dir = 'data/CPD' + i + '.PDF';
+        crimes = parse_crimes(dir);
+        for (var j = 0; j < crimes.length; j++) {
+            var crime = crimes[j];
+            var content = '<b>TITLE:</b> ' + crime.type + '<br/>' +
+                '<b>CRIME ID:</b> ' + crime.id + '<br/>' +
+                '<b>DATE:</b> ' + crime.date_occurred + ', ' + crime.time_occurred + '</div><br/>' +
+                '<b>LOCATION:</b> ' + crime.location + '</div><br/>' +
+                '<b>DESCRIPTION:</b> ' + crime.summary + '</div><br/>';
+            map.addMarker({
+                lat: 40.04 + 0.13 * Math.random(),
+                lng: -88.3 + 0.13 * Math.random(),
+                content: content,
+                icon: pin_icon(crime.summary + ' ' + crime.type),
+                crime: crime
+            });
+        }
+    }
+
+    function create_date_condition(start_date) {
+        return function(marker) {
+            return (new Date(marker.crime.date_occurred)).getTime() > start_date.getTime();
+        };
+    }
+    function create_time_condition(start_hour, end_hour) {
+        return function(marker) {
+            if (marker.crime.time_occurred) {
+                var hm = marker.crime.time_occurred.split(':');
+                var minutes_from_midnight = (+hm[0]) * 60 + (+hm[1]);
+                var left_bound = start_hour * 60;
+                var right_bound = end_hour * 60;
+                return (left_bound <= minutes_from_midnight) && (minutes_from_midnight < right_bound);
+            } else {
+                return true;
+            }
+        };
+    }
+
+    function f_and(f1, f2) {
+        return function(marker){ return f1(marker) && f2(marker);};
+    }
+
+    function f_or(f1, f2) {
+        return function(marker){ return f1(marker) || f2(marker);};
+    }
+
+    function f_not(f) {
+        return function(marker){ return !f(marker);};
+    }
+
+    function check(crime_type, start_date, times_filters) {
+        var date_condition = create_date_condition(start_date);
+        var time_conditions = function(marker){ return false; };
+        for (var i = 0; i < times_filters.length; i++) {
+            if (times_filters[i].checked) {
+                var new_time_condition = create_time_condition((+i) * 3,((+i) + 1) * 3);
+                time_conditions = f_or(time_conditions, new_time_condition);
+            }
+        }
+        var icon_condition = function(marker){ return marker.icon === 'icons/' + crime_types[crime_type]; };
+        var all_conditions = f_and(date_condition, time_conditions);
+        var neg_all_conditions = f_not(all_conditions);
+
+        if (document.getElementById(crime_type).checked) {
+            map.showBy(f_and(icon_condition, all_conditions));
+            map.hideBy(f_and(icon_condition, neg_all_conditions));
+        } else {
+            map.hideBy(icon_condition);
+        }
+    }
+    var prev_select_all_crimes = true;
+    var prev_select_all_times = true;
+
+    function checkbox_changed() {
+        if (document.getElementById('all-dates').checked) {
+            var start_date = new Date(0);
+        }
+        if (document.getElementById('month').checked) {
+            var start_date = new Date(new Date() - 30 * 24 * 3600 * 1000);
+        }
+        if (document.getElementById('two-weeks').checked) {
+            var start_date = new Date(new Date() - 14 * 24 * 3600 * 1000);
+        }
+        if (document.getElementById('week').checked) {
+            var start_date = new Date(new Date() - 7 * 24 * 3600 * 1000);
+        }
+
+        var current_select_all_crimes = document.getElementById('all-crimes').checked;
+        if (current_select_all_crimes != prev_select_all_crimes) {
+            for (var crime_type in crime_types) {
+                document.getElementById(crime_type).checked = current_select_all_crimes;
+            }
+            prev_select_all_crimes = current_select_all_crimes;
+        }
+        var current_select_all_times = document.getElementById('all-times').checked;
+        if (current_select_all_times != prev_select_all_times) {
+            for (var i = 0; i < times_filters.length; i++) {
+                times_filters[i].checked = current_select_all_times;
+            }
+            prev_select_all_times = current_select_all_times;
+        }
+        for (var crime_type in crime_types) {
+            check(crime_type, start_date, times_filters);
+        }
+    }
+
+    var crime_types = {
+        'assault': 'revolt.png',
+        'theft': 'bank.png',
+        'fire': 'fire.png',
+        'robbery': 'robbery.png',
+        'sexual-assault': 'rape.png',
+        'firearm': 'shooting.png',
+        'drug-alcohol': 'bar.png',
+        'other': 'caution.png'
+    }
+    for (var crime_type in crime_types) {
+        document.getElementById(crime_type).onchange = checkbox_changed;
+    }
+    document.getElementById('all-crimes').onchange = checkbox_changed;
+
+    var dates_filters = ['all-dates', 'month', 'two-weeks', 'week'];
+    for (var i in dates_filters) {
+        document.getElementById(dates_filters[i]).onchange = checkbox_changed;
+    }
+
+    var times_filters = document.getElementsByName('times');
+    for (var i = 0; i < times_filters.length; i++) {
+        times_filters[i].onchange = checkbox_changed;
+    }
+    document.getElementById('all-times').onchange = checkbox_changed;
+
+
+    var tip_location = document.getElementById('tip-location');
+    var tip_box = new google.maps.places.SearchBox(tip_location);
+    adjust_bounds(map.gMap);
+    var submitted_markers = [];
+    tip_box.addListener('places_changed', function() {
+        var places = tip_box.getPlaces();
+        if (places.length == 0) {
+            return;
+        }
+        // clear_markers(submitted_markers);
+
+        // for each place, get the icon, name and location.
+        var bounds = new google.maps.LatLngBounds();
+        places.forEach(function(place) {
+            var icon = {
+                url: place.icon,
+                size: new google.maps.Size(71, 71),
+                origin: new google.maps.Point(0, 0),
+                anchor: new google.maps.Point(17, 34),
+                scaledSize: new google.maps.Size(25, 25)
+            };
+
+            // create a marker for each place.
+
+            // submitted_markers.push(new google.maps.Marker({
+            //     map: map.gMap,
+            //     title: place.name,
+            //     position: place.geometry.location,
+
+            // }));
+            expand_viewport(place, bounds);
+        });
+        map.gMap.fitBounds(bounds);
+        map.zoom(17);
+    });
+
+
+    $('#fillout-form').submit(function(event) {
+        // get the form data
+        // there are many ways to get this data using jQuery (you can use the class or id also)
+        var crime = {
+            'type': $('#tip-title').val(),
+            'summary' : $('#tip-summary').val(),
+            'location': $('#tip-location').val(),
+            'time_occurred': $('#tip-time').val(),
+            'date_occurred': $('#tip-date').val(),
+            'id': 'UNOFFICIAL REPORT. STILL NEEDS THE VERIFICATION'
+        };
+        var content = '<b>TITLE:</b> ' + crime.type + '<br/>' +
+                '<b>CRIME ID:</b> ' + crime.id + '<br/>' +
+                '<b>DATE:</b> ' + crime.date_occurred + ', ' + crime.time_occurred + '</div><br/>' +
+                '<b>LOCATION:</b> ' + crime.location + '</div><br/>' +
+                '<b>DESCRIPTION:</b> ' + crime.summary + '</div><br/>';
+        map.geocode({
+            address: crime.location,
+            success: function(results) {
+                var lat = results[0].geometry.location.lat();
+                var lng = results[0].geometry.location.lng();
+                var icon = pin_icon(crime.summary + ' ' + crime.type);
+                map.addMarker({
+                    lat: lat,
+                    lng: lng,
+                    content: content,
+                    icon: icon,
+                    crime: crime
+                });
+                // map.gMap.setCenter({lat: lat, lng: lat});
+            },
+            error: function(status) {
+                console.error(status);
+            }
+        })
+        // process the form
+        // $.ajax({
+        //     // type: 'POST', // define the type of HTTP verb we want to use (POST for our form)
+        //     // url: 'process', // the url where we want to POST
+        //     data: formData, // our data object
+        //     dataType: 'json', // what type of data do we expect back from the server
+        //     encode: true
+        // })
+        //     // using the done promise callback
+        //     .done(function(data) {
+        //         // log data to the console so we can see
+        //         // here we will handle errors and validation messages
+        //     });
+        // stop the form from submitting the normal way and refreshing the page
+        event.preventDefault();
+    });
+
 }(window, window.SafeRoutes || (window.SafeRoutes = {})));
